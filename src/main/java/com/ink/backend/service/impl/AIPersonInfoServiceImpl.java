@@ -95,7 +95,7 @@ public class AIPersonInfoServiceImpl extends ServiceImpl<AIPersonInfoMapper, AIP
         String sortOrder = aIPersonInfoQueryRequest.getSortOrder();
 
         queryWrapper.eq(id > 0 ,"id",id);
-        queryWrapper.eq(StringUtils.isNotBlank(aiName),"aiName",aiName);
+        queryWrapper.like(StringUtils.isNotBlank(aiName),"aiName",aiName);
         queryWrapper.eq(ObjectUtils.isNotEmpty(userId), "userId", userId);
         queryWrapper.eq("isDelete", false);
         queryWrapper.orderBy(SqlUtils.validSortField(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC),

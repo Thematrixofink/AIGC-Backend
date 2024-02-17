@@ -1,5 +1,6 @@
 package com.ink.backend.controller;
 
+import cn.hutool.http.HttpUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.google.gson.Gson;
 import com.ink.backend.annotation.AuthCheck;
@@ -10,23 +11,30 @@ import com.ink.backend.common.ResultUtils;
 import com.ink.backend.constant.UserConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.exception.ThrowUtils;
+import com.ink.backend.manager.CosManager;
+import com.ink.backend.model.dto.GenRequest.GenAIRequest;
 import com.ink.backend.model.dto.aIPersonInfo.AIPersonInfoAddRequest;
 import com.ink.backend.model.dto.aIPersonInfo.AIPersonInfoEditRequest;
 import com.ink.backend.model.dto.aIPersonInfo.AIPersonInfoQueryRequest;
 import com.ink.backend.model.dto.aIPersonInfo.AIPersonInfoUpdateRequest;
 import com.ink.backend.model.entity.AIPersonInfo;
+import com.ink.backend.model.entity.Message;
 import com.ink.backend.model.entity.User;
 import com.ink.backend.service.AIPersonInfoService;
+import com.ink.backend.service.MessageService;
 import com.ink.backend.service.UserService;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import com.yupi.yucongming.dev.client.YuCongMingClient;
+import com.yupi.yucongming.dev.model.DevChatRequest;
+import com.yupi.yucongming.dev.model.DevChatResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * AI数字人信息接口
@@ -41,9 +49,95 @@ public class AIPersonInfoController {
     private AIPersonInfoService aIPersonInfoService;
 
     @Resource
+    private MessageService messageService;
+
+    @Resource
     private UserService userService;
 
+    @Resource
+    private CosManager cosManager;
+
+    @Resource
+    private YuCongMingClient yuCongMingClient;
+
     private final static Gson GSON = new Gson();
+
+
+    /**
+     * 生成数字人
+     * @param genAIRequest
+     * @param request
+     * @return
+     */
+    @PostMapping("/preGenerator")
+    public BaseResponse<String> preGenerator(@RequestBody GenAIRequest genAIRequest, HttpServletRequest request) {
+        String aiName = genAIRequest.getAiName();
+        String aiProfile = genAIRequest.getAiProfile();
+        String aiVoice = genAIRequest.getAiVoice();
+        String aiPicture = genAIRequest.getAiPicture();
+        //1.对各项属性进行校验
+        if(StringUtils.isBlank(aiName) || StringUtils.isBlank(aiProfile) || StringUtils.isBlank(aiVoice)){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"请求参数为空");
+        }
+        boolean voiceValid = validURL(aiVoice);
+        boolean pictureValid = true;
+        if(StringUtils.isNotBlank(aiPicture)){
+             pictureValid = validURL(aiPicture);
+        }
+        if(!voiceValid || !pictureValid){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"文件路径非法");
+        }
+        //2.创建AIperson以及message到数据库
+        Long userId = userService.getLoginUser(request).getId();
+        AIPersonInfo aiPersonInfo = new AIPersonInfo();
+        aiPersonInfo.setUserId(userId);
+        aiPersonInfo.setAiName(aiName);
+        aiPersonInfo.setAiProfile(aiProfile);
+        aiPersonInfo.setAiVoice(aiVoice);
+        aiPersonInfo.setAiPicture(aiPicture);
+        boolean isSaveAiInfo = aIPersonInfoService.save(aiPersonInfo);
+        if(!isSaveAiInfo){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
+        }
+        Message message = new Message();
+        message.setAiPersonId(aiPersonInfo.getId());
+        message.setUserId(userId);
+        //2.对用户的输入进行一系列前置修改
+        //todo 更加合理的进行前置准备
+        StringBuilder userInputBuilder = new StringBuilder();
+        userInputBuilder.append("我希望你扮演我离世的"+aiName+"来和我对话。"+aiProfile);
+        userInputBuilder.append("我现在很想念他，希望你能扮演他来安慰安慰我，和我对话。");
+        String userInput = userInputBuilder.toString();
+
+        //3.把aiVoice以及aiPicture的连接发送给视频生成大模型
+        //todo 发送给视频模型,发送id、视频连接、音频链接
+        Long talkId = aiPersonInfo.getId();
+        //HttpUtil.post()
+
+        //4.发送给AI大模型
+        //todo 发送给文本模型 ,替换为自己的
+        DevChatRequest devChatRequest = new DevChatRequest();
+        devChatRequest.setModelId(1748617589749583874L);
+        devChatRequest.setMessage(userInput);
+        com.yupi.yucongming.dev.common.BaseResponse<DevChatResponse> response = yuCongMingClient.doChat(devChatRequest);
+        String result = response.getData().getContent();
+        System.out.println(result);
+
+        //5.将AI返回的消息保存下来
+        StringBuilder mes = new StringBuilder();
+        //使用&&分割两条消息
+        mes.append("user:"+userInput+"&&"+"ai:"+result+"&&");
+        message.setContent(mes.toString());
+        boolean isSaveMes = messageService.save(message);
+        if(!isSaveMes){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
+        }
+        //对话的唯一id，返回给前端，之后前端请求必须携带着这个对话的id（因为API的无状态性)
+        Long messageId = message.getId();
+        return ResultUtils.success(messageId.toString());
+    }
+
+
 
     // region 增删改查
 
@@ -211,6 +305,17 @@ public class AIPersonInfoController {
         }
         boolean result = aIPersonInfoService.updateById(aIPersonInfo);
         return ResultUtils.success(result);
+    }
+
+    private static boolean validURL(String url) {
+        // 定义正则表达式
+        String regex = "^https://original-1317028174\\.cos\\.ap-beijing\\.myqcloud\\.com/(user_voice|user_picture|user_avatar)/.+";
+        // 编译正则表达式
+        Pattern pattern = Pattern.compile(regex);
+        // 创建匹配器
+        Matcher matcher = pattern.matcher(url);
+        // 进行匹配
+        return matcher.matches();
     }
 
 }

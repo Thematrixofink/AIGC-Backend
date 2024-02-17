@@ -15,6 +15,11 @@ import org.springframework.stereotype.Service;
 public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message>
     implements MessageService{
 
+    //todo 实现具体的转换
+    @Override
+    public String getHistoryMessage(String content) {
+        return "我是历史消息";
+    }
 }
 
 

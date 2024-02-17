@@ -25,12 +25,12 @@ spring:
     password:
   # Redis 配置
   # todo 需替换配置，然后取消注释
-#  redis:
-#    database: 1
-#    host: localhost
-#    port: 6379
-#    timeout: 5000
-#    password: 123456
+  redis:
+    database: 1
+    host: localhost
+    port: 6379
+    timeout: 5000
+    password:
   # 文件上传
   servlet:
     multipart:
@@ -68,3 +68,8 @@ cos:
     secretKey: CD250jGbmjYSIxdliUAkJfOzVpukZDgw
     region: ap-beijing
     bucket: original-1317028174
+
+yuapi:
+  client:
+    access-key: rkpcl4sfilr8q47igdx4qariwaeuvbt4
+    secret-key: pp592sv2dfp42cb599e2ekvbs7yf01cj
