@@ -16,10 +16,10 @@ public class GenRequest implements Serializable {
      */
     private String messageId;
 
-    /**
-     * 是否需要生成视频
-     */
-    private boolean needVideo;
+//    /**
+//     * 是否需要生成视频
+//     */
+//    private boolean needVideo;
 
 
     private static final long serialVersionUID = 1L;

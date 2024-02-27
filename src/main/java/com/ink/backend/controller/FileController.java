@@ -129,7 +129,7 @@ public class FileController {
             //如果是视频文件，那么返回路径为音频文件的路径
             //这里使用了腾讯云COS的自动人声提取
             else if (Arrays.asList("avi", "flv", "mov", "wmv", "mkv","mp4").contains(fileSuffix)) {
-                return filePath.substring(0, filePath.length() - 4) + "_vocal.mp3";
+                return filePath.substring(0, filePath.length() - 4) + "_vocal.flac";
             }
             else{
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件类型错误");

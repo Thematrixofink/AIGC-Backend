@@ -1,0 +1,14 @@
+package com.ink.backend.controller;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * ai小伴
+ */
+@RestController
+@RequestMapping("/aiCompany")
+@Slf4j
+public class AICompanyController {
+}

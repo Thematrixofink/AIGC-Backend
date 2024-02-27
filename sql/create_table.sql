@@ -52,3 +52,29 @@ create table if not exists message
     foreign key (aiPersonId)  references aiPersonInfo(id)
 ) comment '聊天记录表' collate = utf8mb4_unicode_ci;
 
+-- 漂流瓶表
+create table if not exists bottle
+(
+    id           bigint auto_increment comment 'id' primary key,
+    userId       bigint                                 not null comment '发送此瓶子的用户的Id',
+    pickUserId   bigint                                     null comment '捞起此瓶子的用户的Id',
+    content      text                                   not null comment '漂流瓶内容',
+    isPick       tinyint      default 0                 not null comment '是否被打捞',
+    createTime   datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime   datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete     tinyint      default 0                 not null comment '是否删除',
+    foreign key (userId)      references user(id)
+) comment '漂流瓶表' collate = utf8mb4_unicode_ci;
+
+create table if not exists bottleComment
+(
+    id           bigint auto_increment comment 'id' primary key,
+    bottleId     bigint                                 not null comment '瓶子的Id',
+    parentId     bigint       default 0                 not null comment '此条评论的父评论,0时表示为顶级评论',
+    userId       bigint                                 not null comment '发布此条评论的id',
+    replyUserId  bigint                                 not null comment '被回复的用户的id',
+    detail       varchar(1024)                          not null comment '评论的内容',
+    createTime   datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
+    foreign key (bottleId)      references bottle(id)
+) comment '漂流瓶评论表' collate = utf8mb4_unicode_ci;
+
