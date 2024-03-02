@@ -15,12 +15,13 @@
             <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
             <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
             <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+            <result property="aigcCount" column="aigcCount" jdbcType="INTEGER"/>
     </resultMap>
 
     <sql id="Base_Column_List">
         id,userAccount,userPassword,
         userName,userAvatar,userProfile,
         userRole,createTime,updateTime,
-        isDelete
+        isDelete,aigcCount
     </sql>
 </mapper>

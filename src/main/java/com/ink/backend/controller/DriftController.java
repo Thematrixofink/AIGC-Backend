@@ -1,6 +1,7 @@
 package com.ink.backend.controller;
 
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ink.backend.annotation.AuthCheck;
@@ -12,12 +13,16 @@ import com.ink.backend.constant.UserConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.exception.ThrowUtils;
 import com.ink.backend.model.dto.bottle.BottleAddRequest;
+import com.ink.backend.model.dto.bottle.BottleCommentRequest;
 import com.ink.backend.model.dto.bottle.BottleQueryRequest;
 import com.ink.backend.model.dto.user.UserAddRequest;
 import com.ink.backend.model.entity.Bottle;
+import com.ink.backend.model.entity.Bottlecomment;
 import com.ink.backend.model.entity.User;
+import com.ink.backend.model.vo.BottleCommentVO;
 import com.ink.backend.model.vo.BottleVO;
 import com.ink.backend.service.BottleService;
+import com.ink.backend.service.BottlecommentService;
 import com.ink.backend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
@@ -27,6 +32,11 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 漂流瓶
@@ -40,6 +50,8 @@ public class DriftController {
     private BottleService bottleService;
     @Resource
     private UserService userService;
+    @Resource
+    private BottlecommentService bottlecommentService;
 
     // region 增删改查
 
@@ -96,7 +108,11 @@ public class DriftController {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
         boolean b = bottleService.removeById(id);
-        return ResultUtils.success(b);
+        // 删除此瓶子的评论
+        LambdaQueryWrapper<Bottlecomment> deleteWrapper = new LambdaQueryWrapper<>();
+        deleteWrapper.eq(Bottlecomment::getBottleId,id);
+        boolean remove = bottlecommentService.remove(deleteWrapper);
+        return ResultUtils.success(b && remove);
     }
 
 
@@ -115,7 +131,55 @@ public class DriftController {
         if (bottle == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        return ResultUtils.success(BottleVO.objToVo(bottle));
+        BottleVO bottleVO = BottleVO.objToVo(bottle);
+        //获取瓶子的评论
+        LambdaQueryWrapper<Bottlecomment> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Bottlecomment::getBottleId,id);
+        //查询到所有与此瓶子相关的评论
+        List<Bottlecomment> allComments = bottlecommentService.list(wrapper);
+        if(allComments == null || allComments.size() == 0){
+            bottleVO.setComments(null);
+            return ResultUtils.success(bottleVO);
+        }
+        //对评论进行处理
+        //1.将评论按照parentId的大小进行排序，parentId小的评论在上面
+        List<Bottlecomment> sortComments = allComments.stream().sorted((o1, o2) -> (int) (o1.getParentId() - o2.getParentId())).collect(Collectors.toList());
+        //2.将comment转换为commentVO
+        Bottlecomment parentComment = sortComments.get(0);
+        Long userId = parentComment.getUserId();
+        Long replyUserId = parentComment.getReplyUserId();
+        //获取回复和被回复用户的信息
+        User user = userService.getById(userId);
+        String userName = user.getUserName();
+        String userAvatar = user.getUserAvatar();
+        User replyUser = userService.getById(replyUserId);
+        String replyUserName = replyUser.getUserName();
+        String replyUserAvatar = replyUser.getUserAvatar();
+        List<BottleCommentVO> collectComments = sortComments.stream().map(bottlecomment -> {
+            BottleCommentVO bottleCommentVO = new BottleCommentVO();
+            BeanUtils.copyProperties(bottlecomment, bottleCommentVO);
+            Long tempUserId = bottlecomment.getUserId();
+            Long tempReplyUserId = bottlecomment.getReplyUserId();
+            if (tempUserId.equals(userId)) {
+                bottleCommentVO.setUserName(userName);
+                bottleCommentVO.setUserAvatar(userAvatar);
+            }
+            if (tempUserId.equals(replyUserId)) {
+                bottleCommentVO.setUserName(replyUserName);
+                bottleCommentVO.setUserAvatar(replyUserAvatar);
+            }
+            if (tempReplyUserId.equals(userId)) {
+                bottleCommentVO.setReplyUserName(userName);
+                bottleCommentVO.setReplyUserAvatar(userAvatar);
+            }
+            if (tempReplyUserId.equals(replyUserId)) {
+                bottleCommentVO.setReplyUserName(replyUserName);
+                bottleCommentVO.setReplyUserAvatar(replyUserAvatar);
+            }
+            return bottleCommentVO;
+        }).collect(Collectors.toList());
+        bottleVO.setComments(collectComments);
+        return ResultUtils.success(bottleVO);
     }
 
 
@@ -169,6 +233,63 @@ public class DriftController {
         bottle.setIsPick(1);
         bottleService.updateById(bottle);
         return ResultUtils.success(bottleVO);
+    }
+
+    /**
+     * 对漂流瓶进行评论
+     * @param bottleCommentRequest
+     * @param request
+     * @return
+     */
+    @PostMapping("/comment")
+    public BaseResponse<BottleCommentVO> commentBottle(@RequestBody BottleCommentRequest bottleCommentRequest, HttpServletRequest request){
+        //1.校验参数
+        if (bottleCommentRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Long bottleId = bottleCommentRequest.getBottleId();
+        Long parentId = bottleCommentRequest.getParentId();
+        Long replyUserId = bottleCommentRequest.getReplyUserId();
+        String detail = bottleCommentRequest.getDetail();
+        Long loginUserId = userService.getLoginUser(request).getId();
+        User user = userService.getById(loginUserId);
+        if(StringUtils.isBlank(detail)){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"评论内容为空!");
+        }
+        if(detail.length() > 512){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"评论太长了");
+        }
+        Bottle bottle = bottleService.getById(bottleId);
+        if (bottle == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        if(parentId != 0) {
+            Bottlecomment parentComment = bottlecommentService.getById(parentId);
+            if (parentComment == null) {
+                throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+            }
+        }
+        User replyUser = userService.getById(replyUserId);
+        if(replyUser == null){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        //2.添加评论
+        Bottlecomment bottlecomment = new Bottlecomment();
+        bottlecomment.setBottleId(bottleId);
+        bottlecomment.setParentId(parentId);
+        bottlecomment.setUserId(loginUserId);
+        bottlecomment.setReplyUserId(replyUserId);
+        bottlecomment.setDetail(detail);
+        bottlecommentService.save(bottlecomment);
+        //3.获取评论返回类
+        BottleCommentVO bottleCommentVO = new BottleCommentVO();
+        BeanUtils.copyProperties(bottlecomment,bottleCommentVO);
+        bottleCommentVO.setUserName(user.getUserName());
+        bottleCommentVO.setUserAvatar(user.getUserAvatar());
+        bottleCommentVO.setReplyUserName(replyUser.getUserName());
+        bottleCommentVO.setReplyUserAvatar(replyUser.getUserAvatar());
+
+        return ResultUtils.success(bottleCommentVO);
     }
 
     // endregion

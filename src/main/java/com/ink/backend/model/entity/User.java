@@ -60,6 +60,11 @@ public class User implements Serializable {
     private Date updateTime;
 
     /**
+     * aigc功能剩余的使用次数
+     */
+    private Integer aigcCount;
+
+    /**
      * 是否删除
      */
     @TableLogic

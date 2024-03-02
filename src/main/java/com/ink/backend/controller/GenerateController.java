@@ -18,15 +18,21 @@ import com.ink.backend.service.UserService;
 import com.yupi.yucongming.dev.client.YuCongMingClient;
 import com.yupi.yucongming.dev.model.DevChatRequest;
 import com.yupi.yucongming.dev.model.DevChatResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 
-@Controller
+@RestController
+@RequestMapping("/generate")
+@Slf4j
 public class GenerateController {
 
     @Resource
@@ -47,7 +53,7 @@ public class GenerateController {
      * @param request
      * @return
      */
-    @PostMapping("/generateVoiceByText")
+    @PostMapping("/voice")
     public BaseResponse<GenVoiceResponse> generateVoiceByText(@RequestBody GenRequest genRequest, HttpServletRequest request) {
         //1.检验用户输入合法性
         String userInput = genRequest.getUserInput();
@@ -65,15 +71,16 @@ public class GenerateController {
 
         //2.将用户的输入发送给AI文本生成模型
         //需要把历史消息也发送给文本生成模型
-        String historyMessage = message.getContent();
+        String historyOriginMessage = message.getContent();
         Long aiPersonId = message.getAiPersonId();
 
         //todo 将历史信息连同着新的信息发送给AI文本模型
         //todo getHistoryMessage方法待完善
-        String historicMessage = messageService.getHistoryMessage(historyMessage);
+        String historyMessage = messageService.getHistoryMessage(historyOriginMessage);
 
         //todo 将历史消息拼接上用户新的输入，发送给AI文本模型
-        String sendMessage = historicMessage +"user:"+ genRequest.getUserInput();
+        String jsonUserInput = messageService.userMsgToJson(userInput);
+        String sendMessage = messageService.appendMessage(historyMessage, jsonUserInput);
         //todo 发送给AI文本模型
 
         DevChatRequest devChatRequest = new DevChatRequest();
@@ -81,12 +88,13 @@ public class GenerateController {
         devChatRequest.setMessage(sendMessage);
         com.yupi.yucongming.dev.common.BaseResponse<DevChatResponse> response = yuCongMingClient.doChat(devChatRequest);
         String result = response.getData().getContent();
-        System.out.println(result);
 
         //3.保存到Message中去
-
+        String aiMessage = messageService.aiMsgToJson(result);
         //todo 对消息进行操作
-        //message.setContent(mes.toString());
+        String temp = messageService.appendMessage(historyOriginMessage,sendMessage);
+        String mes  = messageService.appendMessage(temp,aiMessage);
+        message.setContent(mes);
 
         boolean isSave = messageService.updateById(message);
         if (!isSave){
@@ -107,6 +115,8 @@ public class GenerateController {
         System.out.println("生成音频。。。");
         //todo 学习异步操作以及回调函数
         GenVoiceResponse genVoiceResponse = new GenVoiceResponse();
+        genVoiceResponse.setAiMessage(result);
+        //todo 设置音频链接
         return ResultUtils.success(genVoiceResponse);
     }
 
@@ -117,7 +127,7 @@ public class GenerateController {
      * @param request
      * @return
      */
-    @PostMapping("/generateVideoByText")
+    @PostMapping("/video")
     public BaseResponse<GenVideoResponse> generateVideoByText(@RequestBody GenRequest genRequest, HttpServletRequest request) {
         //1.检验用户输入合法性
         String userInput = genRequest.getUserInput();
@@ -143,16 +153,17 @@ public class GenerateController {
 
         //2.将用户的输入发送给AI文本生成模型
         //需要把历史消息也发送给文本生成模型
-        String historyMessage = message.getContent();
+        String historyOriginMessage = message.getContent();
 
         //todo 将历史信息连同着新的信息发送给AI文本模型
         //todo getHistoryMessage方法待完善
-        String historicMessage = messageService.getHistoryMessage(historyMessage);
+        String historyMessage = messageService.getHistoryMessage(historyOriginMessage);
 
         //todo 将历史消息拼接上用户新的输入，发送给AI文本模型
-        String sendMessage = historicMessage +"user:"+ genRequest.getUserInput();
-        //todo 发送给AI文本模型
+        String jsonUserInput = messageService.userMsgToJson(userInput);
+        String sendMessage = messageService.appendMessage(historyMessage, jsonUserInput);
 
+        //todo 发送给AI文本模型
         DevChatRequest devChatRequest = new DevChatRequest();
         devChatRequest.setModelId(1748617589749583874L);
         devChatRequest.setMessage(sendMessage);
@@ -161,9 +172,11 @@ public class GenerateController {
         System.out.println(result);
 
         //3.保存到Message中去
-
+        String aiMessage = messageService.aiMsgToJson(result);
         //todo 对消息进行操作
-        //message.setContent(mes.toString());
+        String temp = messageService.appendMessage(historyOriginMessage,sendMessage);
+        String mes  = messageService.appendMessage(temp,aiMessage);
+        message.setContent(mes);
 
         boolean isSave = messageService.updateById(message);
         if (!isSave){

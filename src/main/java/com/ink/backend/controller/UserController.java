@@ -22,6 +22,8 @@ import com.ink.backend.service.UserService;
 import java.util.List;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+
+import io.swagger.models.auth.In;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
@@ -114,6 +116,17 @@ public class UserController {
     public BaseResponse<LoginUserVO> getLoginUser(HttpServletRequest request) {
         User user = userService.getLoginUser(request);
         return ResultUtils.success(userService.getLoginUserVO(user));
+    }
+
+    /**
+     * 获取AIGC核心功能的可用次数
+     * @param request
+     * @return
+     */
+    @GetMapping("/get/useTimes")
+    public BaseResponse<Integer> getUseTimes(HttpServletRequest request){
+        User user = userService.getLoginUser(request);
+        return ResultUtils.success(user.getAigcCount());
     }
 
     // endregion

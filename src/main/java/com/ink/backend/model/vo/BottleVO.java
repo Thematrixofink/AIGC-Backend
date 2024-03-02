@@ -1,14 +1,20 @@
 package com.ink.backend.model.vo;
 
 import com.ink.backend.model.entity.Bottle;
+import com.ink.backend.model.entity.Bottlecomment;
 import lombok.Data;
 import org.springframework.beans.BeanUtils;
 
 import java.io.Serializable;
 import java.util.Date;
+import java.util.List;
 
 @Data
 public class BottleVO implements Serializable {
+    /**
+     * 瓶子的Id
+     */
+    private Long id;
     /**
      * 发送此瓶子的用户的Id
      */
@@ -33,6 +39,11 @@ public class BottleVO implements Serializable {
      * 创建时间
      */
     private Date createTime;
+
+    /**
+     * 评论
+     */
+    private List<BottleCommentVO> comments;
 
     /**
      * 包装类转对象

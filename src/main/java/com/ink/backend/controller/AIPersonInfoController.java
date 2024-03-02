@@ -1,8 +1,6 @@
 package com.ink.backend.controller;
 
-import cn.hutool.http.HttpUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.google.gson.Gson;
 import com.ink.backend.annotation.AuthCheck;
 import com.ink.backend.common.BaseResponse;
 import com.ink.backend.common.DeleteRequest;
@@ -11,7 +9,6 @@ import com.ink.backend.common.ResultUtils;
 import com.ink.backend.constant.UserConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.exception.ThrowUtils;
-import com.ink.backend.manager.CosManager;
 import com.ink.backend.model.dto.GenRequest.GenAIRequest;
 import com.ink.backend.model.dto.aIPersonInfo.AIPersonInfoAddRequest;
 import com.ink.backend.model.dto.aIPersonInfo.AIPersonInfoEditRequest;
@@ -55,12 +52,9 @@ public class AIPersonInfoController {
     private UserService userService;
 
     @Resource
-    private CosManager cosManager;
-
-    @Resource
     private YuCongMingClient yuCongMingClient;
 
-    private final static Gson GSON = new Gson();
+    private static final String PROMPT = "";
 
 
     /**
@@ -71,6 +65,12 @@ public class AIPersonInfoController {
      */
     @PostMapping("/preGenerator")
     public BaseResponse<String> preGenerator(@RequestBody GenAIRequest genAIRequest, HttpServletRequest request) {
+        //检查用户是否还有使用功能的次数
+        User user = userService.getLoginUser(request);
+        Integer aigcCount = user.getAigcCount();
+        if(aigcCount <= 0){
+            return ResultUtils.error(ErrorCode.NO_AUTH_ERROR,"您的次数已经用光！");
+        }
         String aiName = genAIRequest.getAiName();
         String aiProfile = genAIRequest.getAiProfile();
         String aiVoice = genAIRequest.getAiVoice();
@@ -88,7 +88,7 @@ public class AIPersonInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"文件路径非法");
         }
         //2.创建AIperson以及message到数据库
-        Long userId = userService.getLoginUser(request).getId();
+        Long userId = user.getId();
         AIPersonInfo aiPersonInfo = new AIPersonInfo();
         aiPersonInfo.setUserId(userId);
         aiPersonInfo.setAiName(aiName);
@@ -106,13 +106,16 @@ public class AIPersonInfoController {
         //todo 更加合理的进行前置准备
         StringBuilder userInputBuilder = new StringBuilder();
         userInputBuilder.append("我希望你扮演我离世的"+aiName+"来和我对话。"+aiProfile);
-        userInputBuilder.append("我现在很想念他，希望你能扮演他来安慰安慰我，和我对话。");
+        userInputBuilder.append("我现在很想念他，希望你能扮演他来安慰安慰我，和我对话。生成的字数不要超过20个字,你只需要返回生成的内容，格式上不需要修改");
         String userInput = userInputBuilder.toString();
+
+        String userMessage = messageService.userMsgToJson(userInput);
 
         //3.把aiVoice以及aiPicture的连接发送给视频生成大模型
         //todo 发送给视频模型,发送id、视频连接、音频链接
         Long talkId = aiPersonInfo.getId();
         //HttpUtil.post()
+
 
         //4.发送给AI大模型
         //todo 发送给文本模型 ,替换为自己的
@@ -121,19 +124,25 @@ public class AIPersonInfoController {
         devChatRequest.setMessage(userInput);
         com.yupi.yucongming.dev.common.BaseResponse<DevChatResponse> response = yuCongMingClient.doChat(devChatRequest);
         String result = response.getData().getContent();
-        System.out.println(result);
+
 
         //5.将AI返回的消息保存下来
-        StringBuilder mes = new StringBuilder();
-        //使用&&分割两条消息
-        mes.append("user:"+userInput+"&&"+"ai:"+result+"&&");
-        message.setContent(mes.toString());
+        String aiMessage = messageService.aiMsgToJson(result);
+        String mes = messageService.appendMessage(userMessage, aiMessage);
+        message.setContent(mes);
         boolean isSaveMes = messageService.save(message);
         if(!isSaveMes){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR);
         }
         //对话的唯一id，返回给前端，之后前端请求必须携带着这个对话的id（因为API的无状态性)
         Long messageId = message.getId();
+        //对话创建完成，用户的使用次数减1
+        aigcCount--;
+        user.setAigcCount(aigcCount);
+        boolean update = userService.updateById(user);
+        if(!update){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
+        }
         return ResultUtils.success(messageId.toString());
     }
 

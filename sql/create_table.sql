@@ -78,3 +78,16 @@ create table if not exists bottleComment
     foreign key (bottleId)      references bottle(id)
 ) comment '漂流瓶评论表' collate = utf8mb4_unicode_ci;
 
+-- 聊天记录表
+create table if not exists message
+(
+    id           bigint auto_increment comment 'id' primary key,
+    userId       bigint                                 not null comment '用户的Id',
+    aiPersonId   bigint                                 not null comment '数字人的Id',
+    content      text                                   not null comment '聊天记录',
+    createTime   datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime   datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete     tinyint      default 0                 not null comment '是否删除',
+    foreign key (userId)      references user(id),
+    foreign key (aiPersonId)  references aiPersonInfo(id)
+) comment '聊天记录表' collate = utf8mb4_unicode_ci;
