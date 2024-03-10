@@ -32,6 +32,14 @@ public interface MessageService extends IService<Message> {
     String getHistoryMessage(String content);
 
     /**
+     * 心理咨询师对话获取历史消息
+     * @param content
+     * @return
+     */
+    String getConsultantMessage(String content);
+
+
+    /**
      * 将消息连接起来
      * @param historyMessage
      * @param newMessage

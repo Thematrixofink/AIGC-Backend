@@ -15,15 +15,36 @@ public class BottleVO implements Serializable {
      * 瓶子的Id
      */
     private Long id;
+
     /**
      * 发送此瓶子的用户的Id
      */
     private Long userId;
 
     /**
+     * 发布此评论的用户名
+     */
+    private String userName;
+
+    /**
+     * 发布此评论的用户头像地址
+     */
+    private String userAvatar;
+
+    /**
      * 捞起此瓶子的用户的Id
      */
     private Long pickUserId;
+
+    /**
+     * 被回复的用户的用户名
+     */
+    private String pickUserName;
+
+    /**
+     * 被回复的用户的用户头像地址
+     */
+    private String pickUserAvatar;
 
     /**
      * 漂流瓶内容

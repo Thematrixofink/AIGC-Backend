@@ -20,6 +20,7 @@ public class RedissonConfig {
     private String password;
 
     private Integer port;
+
     /**
      * 创建
      * @return
@@ -27,11 +28,9 @@ public class RedissonConfig {
     @Bean
     public RedissonClient redissonClient(){
         Config config = new Config();
-        //todo 单一服务器,如果是集群可能需要替换
-        //todo 目前写死，后面改为配置文件修改
         config.useSingleServer()
                 .setDatabase(database)
-                //todo 如果有密码要取消注释
+                //todo 有密码要取消注释
                 //.setPassword(password)
                 .setAddress("redis://"+host+":"+port);
         RedissonClient redisson = Redisson.create(config);

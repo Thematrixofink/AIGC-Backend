@@ -108,4 +108,12 @@ public interface UserService extends IService<User> {
      */
     QueryWrapper<User> getQueryWrapper(UserQueryRequest userQueryRequest);
 
+    /**
+     * 获取用户头像
+     * @param id
+     * @return
+     */
+    String getAvatar(Long id);
+
+    Integer getUseTimes(Long userId);
 }

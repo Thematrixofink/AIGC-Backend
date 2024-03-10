@@ -12,6 +12,7 @@ import com.ink.backend.common.ResultUtils;
 import com.ink.backend.constant.UserConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.exception.ThrowUtils;
+import com.ink.backend.manager.CosManager;
 import com.ink.backend.model.dto.bottle.BottleAddRequest;
 import com.ink.backend.model.dto.bottle.BottleCommentRequest;
 import com.ink.backend.model.dto.bottle.BottleQueryRequest;
@@ -24,6 +25,8 @@ import com.ink.backend.model.vo.BottleVO;
 import com.ink.backend.service.BottleService;
 import com.ink.backend.service.BottlecommentService;
 import com.ink.backend.service.UserService;
+import com.qcloud.cos.model.ciModel.auditing.AuditingJobsDetail;
+import com.qcloud.cos.model.ciModel.auditing.TextAuditingResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -52,6 +55,8 @@ public class DriftController {
     private UserService userService;
     @Resource
     private BottlecommentService bottlecommentService;
+    @Resource
+    private CosManager cosManager;
 
     // region 增删改查
 
@@ -75,6 +80,10 @@ public class DriftController {
         //漂流瓶内容长度是否过长
         if(content.length() > 200){
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"漂流瓶内容过长");
+        }
+        boolean b = textAuditing(content);
+        if(!b){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"请文明语言!");
         }
         Bottle bottle = new Bottle();
         bottle.setContent(content);
@@ -112,17 +121,18 @@ public class DriftController {
         LambdaQueryWrapper<Bottlecomment> deleteWrapper = new LambdaQueryWrapper<>();
         deleteWrapper.eq(Bottlecomment::getBottleId,id);
         boolean remove = bottlecommentService.remove(deleteWrapper);
-        return ResultUtils.success(b && remove);
+        return ResultUtils.success(b);
     }
 
 
     /**
-     * 根据 id 获取漂流瓶
+     * 根据 id 获取漂流瓶,仅限用户
      *
      * @param id
      * @return
      */
     @GetMapping("/get/vo")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<BottleVO> getBottleVOById(long id, HttpServletRequest request) {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -197,7 +207,6 @@ public class DriftController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(request);
-        bottleQueryRequest.setUserId(loginUser.getId());
         long current = bottleQueryRequest.getCurrent();
         long size = bottleQueryRequest.getPageSize();
         // 限制爬虫
@@ -218,16 +227,22 @@ public class DriftController {
         //todo 检查用户是否还有打捞次数，限制用户打捞的次数
         BottleQueryRequest bottleQueryRequest = new BottleQueryRequest();
         //防止捞到自己的
-        Long pickUserId = userService.getLoginUser(request).getId();
+        User loginUser = userService.getLoginUser(request);
+        Long pickUserId = loginUser.getId();
         bottleQueryRequest.setNotId(pickUserId);
-        //没有被捞到的瓶子
         bottleQueryRequest.setIsPick(0);
         QueryWrapper<Bottle> queryWrapper = bottleService.getQueryWrapper(bottleQueryRequest);
         Bottle bottle = bottleService.getOne(queryWrapper,false);
         if(ObjectUtils.isEmpty(bottle)){
             return ResultUtils.error(ErrorCode.NOT_FOUND_ERROR,"瓶子已经被捞完了");
         }
+        Long userId = bottle.getUserId();
+        User user = userService.getById(userId);
         BottleVO bottleVO = BottleVO.objToVo(bottle);
+        bottleVO.setUserName(user.getUserName());
+        bottleVO.setUserAvatar(user.getUserAvatar());
+        bottleVO.setPickUserName(loginUser.getUserName());
+        bottleVO.setPickUserAvatar(loginUser.getUserAvatar());
         //修改原来的瓶子为已被捞起状态
         bottle.setPickUserId(pickUserId);
         bottle.setIsPick(1);
@@ -256,19 +271,23 @@ public class DriftController {
         if(StringUtils.isBlank(detail)){
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"评论内容为空!");
         }
-        if(detail.length() > 512){
+        if(detail.length() > 200){
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"评论太长了");
+        }
+        boolean b = textAuditing(detail);
+        if(!b){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"请文明语言!");
         }
         Bottle bottle = bottleService.getById(bottleId);
         if (bottle == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-        if(parentId != 0) {
-            Bottlecomment parentComment = bottlecommentService.getById(parentId);
-            if (parentComment == null) {
-                throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
-            }
-        }
+//        if(parentId != 0) {
+//            Bottlecomment parentComment = bottlecommentService.getById(parentId);
+//            if (parentComment == null) {
+//                throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+//            }
+//        }
         User replyUser = userService.getById(replyUserId);
         if(replyUser == null){
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
@@ -276,11 +295,12 @@ public class DriftController {
         //2.添加评论
         Bottlecomment bottlecomment = new Bottlecomment();
         bottlecomment.setBottleId(bottleId);
-        bottlecomment.setParentId(parentId);
+        //bottlecomment.setParentId(parentId);
         bottlecomment.setUserId(loginUserId);
         bottlecomment.setReplyUserId(replyUserId);
         bottlecomment.setDetail(detail);
         bottlecommentService.save(bottlecomment);
+        Bottlecomment byId = bottlecommentService.getById(bottlecomment.getId());
         //3.获取评论返回类
         BottleCommentVO bottleCommentVO = new BottleCommentVO();
         BeanUtils.copyProperties(bottlecomment,bottleCommentVO);
@@ -288,12 +308,25 @@ public class DriftController {
         bottleCommentVO.setUserAvatar(user.getUserAvatar());
         bottleCommentVO.setReplyUserName(replyUser.getUserName());
         bottleCommentVO.setReplyUserAvatar(replyUser.getUserAvatar());
-
+        bottleCommentVO.setCreateTime(byId.getCreateTime());
         return ResultUtils.success(bottleCommentVO);
     }
 
     // endregion
 
 
+    /**
+     * 识别文字是否合法
+     * @param content
+     * @return
+     */
+    private boolean textAuditing(String content){
+        AuditingJobsDetail auditingDetail = cosManager.textAuditing(content);
+        String textResult = auditingDetail.getResult();
+        if(textResult.equals("1")){
+            return false;
+        }
+        return true;
+    }
 
 }

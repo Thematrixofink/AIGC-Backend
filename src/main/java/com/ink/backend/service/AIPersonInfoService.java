@@ -11,7 +11,6 @@ import javax.servlet.http.HttpServletRequest;
 /**
  * 帖子服务
  *
-
  */
 public interface AIPersonInfoService extends IService<AIPersonInfo> {
 
@@ -31,23 +30,4 @@ public interface AIPersonInfoService extends IService<AIPersonInfo> {
      */
     QueryWrapper<AIPersonInfo> getQueryWrapper(AIPersonInfoQueryRequest aIPersonInfoQueryRequest);
 
-
-
-//    /**
-//     * 获取帖子封装
-//     *
-//     * @param aIPersonInfo
-//     * @param request
-//     * @return
-//     */
-//    AIPersonInfoVO getAIPersonInfoVO(AIPersonInfo aIPersonInfo, HttpServletRequest request);
-
-//    /**
-//     * 分页获取帖子封装
-//     *
-//     * @param aIPersonInfoPage
-//     * @param request
-//     * @return
-//     */
-//    Page<AIPersonInfoVO> getAIPersonInfoVOPage(Page<AIPersonInfo> aIPersonInfoPage, HttpServletRequest request);
 }

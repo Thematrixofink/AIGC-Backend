@@ -1,6 +1,5 @@
 package com.ink.backend.controller;
 
-import cn.hutool.core.util.ObjectUtil;
 import com.ink.backend.common.BaseResponse;
 import com.ink.backend.common.ErrorCode;
 import com.ink.backend.common.ResultUtils;
@@ -9,9 +8,7 @@ import com.ink.backend.exception.BusinessException;
 import com.ink.backend.model.dto.aiChat.AIChatRequest;
 import com.ink.backend.model.dto.aiChat.AIChatResponse;
 import com.ink.backend.model.entity.Message;
-import com.ink.backend.model.entity.User;
 import com.ink.backend.service.MessageService;
-import com.ink.backend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.web.bind.annotation.*;
@@ -20,20 +17,16 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 
 /**
- * ai小伴
- * `
+ * ai心理咨询师
+ *
  */
 @RestController
-@RequestMapping("/aiCompany")
+@RequestMapping("/consultant")
 @Slf4j
-public class AICompanyController {
+public class AIConsultantController {
 
     @Resource
     private MessageService messageService;
-
-    @Resource
-    private UserService userService;
-
 
 
     /**
@@ -43,7 +36,7 @@ public class AICompanyController {
      */
     @PostMapping("/start")
     public BaseResponse<Long> startChat(HttpServletRequest request){
-        Long chatId = messageService.startChat(ModelConstant.COMPANY_CONSTANT, ModelConstant.COMPANY_ID, request);
+        Long chatId = messageService.startChat(ModelConstant.CONSULTANT_PROMPT, ModelConstant.CONSULTANT_ID, request);
         return ResultUtils.success(chatId);
     }
 
@@ -69,10 +62,10 @@ public class AICompanyController {
      * @return
      */
     @PostMapping("/stop")
-    public BaseResponse<Boolean> stopChat(@RequestParam Long chatId,HttpServletRequest request){
+    public BaseResponse<Boolean> stopChat(@RequestParam Long chatId, HttpServletRequest request){
         Message message = messageService.getById(chatId);
         if(ObjectUtils.isEmpty(message)){
-             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         message.setIsDelete(1);
         boolean update = messageService.updateById(message);
@@ -80,22 +73,5 @@ public class AICompanyController {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR);
         }
         return ResultUtils.success(true);
-    }
-
-    @GetMapping("/get")
-    public BaseResponse<String> getHistoryMessage(long id,HttpServletRequest request){
-        if(id <= 0){
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        Message message = messageService.getById(id);
-        if(ObjectUtil.isNull(message) || ObjectUtil.isEmpty(message)){
-            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
-        }
-        User loginUser = userService.getLoginUser(request);
-        Long loginUserId = loginUser.getId();
-        if(!message.getUserId().equals(loginUserId)){
-            throw new BusinessException(ErrorCode.OPERATION_ERROR,"无权限");
-        }
-        return ResultUtils.success(message.getContent());
     }
 }

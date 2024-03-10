@@ -36,7 +36,6 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class AIPersonInfoServiceImpl extends ServiceImpl<AIPersonInfoMapper, AIPersonInfo> implements AIPersonInfoService {
 
-    private final static Gson GSON = new Gson();
 
     @Resource
     private UserService userService;

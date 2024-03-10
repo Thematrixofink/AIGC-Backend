@@ -2,10 +2,13 @@ package com.ink.backend.service.impl;
 
 import static com.ink.backend.constant.UserConstant.USER_LOGIN_STATE;
 
+import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ink.backend.common.ErrorCode;
+import com.ink.backend.common.ResultUtils;
 import com.ink.backend.constant.CommonConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.mapper.UserMapper;
@@ -19,10 +22,14 @@ import com.ink.backend.utils.SqlUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+
+import com.qcloud.cos.COSClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -34,6 +41,10 @@ import org.springframework.util.DigestUtils;
 @Service
 @Slf4j
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
+    @Resource
+    private RedisTemplate<String,String> redisTemplate;
+    @Resource
+    private COSClient cosClient;
 
     /**
      * 盐值，混淆密码
@@ -238,5 +249,37 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         queryWrapper.orderBy(SqlUtils.validSortField(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC),
                 sortField);
         return queryWrapper;
+    }
+
+    @Override
+    public String getAvatar(Long id) {
+        if(ObjectUtil.isNull(id)){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"id错误!");
+        }
+        //1.先从Redis缓存中查询用户头像的Key
+        String avatarURL = String.valueOf(redisTemplate.opsForValue().get("user:avatar:" + id));
+        if(StrUtil.isNotBlank(avatarURL)){
+            return avatarURL;
+        }
+        //2.如果从Redis中查不到，那么就去查数据库
+        User user = this.baseMapper.selectById(id);
+        String userAvatar = user.getUserAvatar();
+        if(StrUtil.isBlank(userAvatar)){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"请先设置头像!");
+        }
+
+        return userAvatar;
+    }
+
+    @Override
+    public Integer getUseTimes(Long userId) {
+        String useTimes = redisTemplate.opsForValue().get("user:useTimes:" + userId);
+        if(StrUtil.isNotBlank(useTimes)){
+            return Integer.valueOf(useTimes);
+        }
+        User user = getById(userId);
+        Integer aigcCount = user.getAigcCount();
+        redisTemplate.opsForValue().set("user:useTimes:"+userId,String.valueOf(aigcCount));
+        return aigcCount;
     }
 }

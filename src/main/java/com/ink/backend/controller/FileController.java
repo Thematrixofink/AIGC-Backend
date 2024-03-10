@@ -4,7 +4,6 @@ import cn.hutool.core.io.FileUtil;
 import com.ink.backend.common.BaseResponse;
 import com.ink.backend.common.ErrorCode;
 import com.ink.backend.common.ResultUtils;
-import com.ink.backend.constant.FileConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.manager.CosManager;
 import com.ink.backend.model.dto.file.UploadFileRequest;
@@ -13,11 +12,13 @@ import com.ink.backend.model.enums.FileUploadBizEnum;
 import com.ink.backend.service.UserService;
 import java.io.File;
 import java.util.Arrays;
+import java.util.List;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+
+import com.qcloud.cos.model.ciModel.auditing.ImageAuditingResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -40,6 +41,12 @@ public class FileController {
     @Resource
     private CosManager cosManager;
 
+    private final List<String> PICTURE_SUFFIX = Arrays.asList("jpeg", "jpg", "svg", "png", "webp");
+
+    private final List<String> AUDIO_SUFFIX   = Arrays.asList("mp3", "wav", "wma", "flac", "ra","pcm");
+
+    private final List<String> VIDEO_SUFFIX   = Arrays.asList("avi", "flv", "mov", "wmv", "mkv","mp4");
+
     /**
      * 文件上传
      *
@@ -51,6 +58,8 @@ public class FileController {
     @PostMapping("/upload")
     public BaseResponse<String> uploadFile(@RequestPart("file") MultipartFile multipartFile,
             UploadFileRequest uploadFileRequest, HttpServletRequest request) {
+        System.out.println(multipartFile);
+        System.out.println(uploadFileRequest.getBiz());
         String biz = uploadFileRequest.getBiz();
         FileUploadBizEnum fileUploadBizEnum = FileUploadBizEnum.getEnumByValue(biz);
         if (fileUploadBizEnum == null) {
@@ -69,8 +78,12 @@ public class FileController {
             file = File.createTempFile(filepath, null);
             multipartFile.transferTo(file);
             cosManager.putObject(filepath, file);
+            boolean isValid = validContent(filepath);
+            if(!isValid){
+                throw new BusinessException(ErrorCode.PARAMS_ERROR,"图片涉及敏感信息!");
+            }
             // 返回可访问地址
-            return ResultUtils.success(FileConstant.COS_HOST + filepath);
+            return ResultUtils.success(filepath);
         } catch (Exception e) {
             log.error("file upload error, filepath = " + filepath, e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "上传失败");
@@ -83,6 +96,30 @@ public class FileController {
                 }
             }
         }
+    }
+
+    /**
+     * 校验文件的内容是否合法
+     * @param filepath
+     * @return
+     */
+    private boolean validContent(String filepath) {
+        String[] split = filepath.split("\\.");
+        if(split.length <= 0){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"COS文件路径错误!");
+        }
+        //文件的后缀
+        String fileSuffix = split[split.length - 1];
+        if(PICTURE_SUFFIX.contains(fileSuffix)){
+            ImageAuditingResponse response = cosManager.imageAuditing(filepath);
+            String result = response.getResult();
+            if(result.equals("1")){
+                return false;
+            }else{
+                return true;
+            }
+        }
+        return true;
     }
 
     /**
@@ -104,7 +141,7 @@ public class FileController {
             if (fileSize > 5 * ONE_M) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件大小不能超过 5M");
             }
-            if (!Arrays.asList("jpeg", "jpg", "svg", "png", "webp").contains(fileSuffix)) {
+            if (!PICTURE_SUFFIX.contains(fileSuffix)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件类型错误");
             }
         }
@@ -113,7 +150,7 @@ public class FileController {
             if (fileSize > 5 * ONE_M) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件大小不能超过 5M");
             }
-            if (!Arrays.asList("jpeg", "jpg", "svg", "png", "webp").contains(fileSuffix)) {
+            if (!PICTURE_SUFFIX.contains(fileSuffix)) {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件类型错误");
             }
         }
@@ -123,12 +160,12 @@ public class FileController {
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "音（视）频文件大小不能超过 50M");
             }
             //如果是音频文件
-            if (Arrays.asList("mp3", "wav", "wma", "flac", "ra","pcm").contains(fileSuffix)) {
+            if (AUDIO_SUFFIX.contains(fileSuffix)) {
 
             }
             //如果是视频文件，那么返回路径为音频文件的路径
             //这里使用了腾讯云COS的自动人声提取
-            else if (Arrays.asList("avi", "flv", "mov", "wmv", "mkv","mp4").contains(fileSuffix)) {
+            else if (VIDEO_SUFFIX.contains(fileSuffix)) {
                 return filePath.substring(0, filePath.length() - 4) + "_vocal.flac";
             }
             else{

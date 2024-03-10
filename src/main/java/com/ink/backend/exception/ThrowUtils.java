@@ -5,7 +5,6 @@ import com.ink.backend.common.ErrorCode;
 /**
  * 抛异常工具类
  *
-
  */
 public class ThrowUtils {
 

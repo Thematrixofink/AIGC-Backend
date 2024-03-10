@@ -1,5 +1,6 @@
 package com.ink.backend.controller;
 
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ink.backend.annotation.AuthCheck;
 import com.ink.backend.common.BaseResponse;
@@ -27,6 +28,7 @@ import io.swagger.models.auth.In;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -45,6 +47,8 @@ public class UserController {
 
     @Resource
     private UserService userService;
+    @Resource
+    private RedisTemplate<String,String> redisTemplate;
 
 
     // region 登录相关
@@ -124,9 +128,10 @@ public class UserController {
      * @return
      */
     @GetMapping("/get/useTimes")
-    public BaseResponse<Integer> getUseTimes(HttpServletRequest request){
-        User user = userService.getLoginUser(request);
-        return ResultUtils.success(user.getAigcCount());
+    public BaseResponse<Integer> getUseTimes(@RequestParam("userId")Long userId,HttpServletRequest request){
+        Integer aigcCount = userService.getUseTimes(userId);
+
+        return ResultUtils.success(aigcCount);
     }
 
     // endregion
@@ -181,11 +186,25 @@ public class UserController {
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updateUser(@RequestBody UserUpdateRequest userUpdateRequest,
             HttpServletRequest request) {
-        if (userUpdateRequest == null || userUpdateRequest.getId() == null) {
+        Long id = userUpdateRequest.getId();
+        if (userUpdateRequest == null || id == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        User user = new User();
-        BeanUtils.copyProperties(userUpdateRequest, user);
+        User user = userService.getById(id);
+        String userName = userUpdateRequest.getUserName();
+        String userAvatar = userUpdateRequest.getUserAvatar();
+        String userProfile = userUpdateRequest.getUserProfile();
+        if(StrUtil.isNotBlank(userName)){
+            user.setUserName(userName);
+        }
+        if(StrUtil.isNotBlank(userProfile)){
+            user.setUserProfile(userProfile);
+        }
+        if(StrUtil.isNotBlank(userAvatar)){
+            user.setUserAvatar(userAvatar);
+            //同时更新缓存中的用户头像地址
+            redisTemplate.opsForValue().getAndSet("user:avatar:"+id,userAvatar);
+        }
         boolean result = userService.updateById(user);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);
@@ -278,6 +297,7 @@ public class UserController {
     @PostMapping("/update/my")
     public BaseResponse<Boolean> updateMyUser(@RequestBody UserUpdateMyRequest userUpdateMyRequest,
             HttpServletRequest request) {
+        //todo 参数校验
         if (userUpdateMyRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -288,5 +308,20 @@ public class UserController {
         boolean result = userService.updateById(user);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(true);
+    }
+
+    /**
+     * 获取当前用户的头像
+     * @param request
+     * @return
+     */
+    @GetMapping("/get/avatar")
+    public BaseResponse<String> getUserAvatar(HttpServletRequest request){
+        User loginUser = userService.getLoginUser(request);
+        String avatarURL = userService.getAvatar(loginUser.getId());
+        if(StrUtil.isBlank(avatarURL)){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"用户头像为空!");
+        }
+        return ResultUtils.success(avatarURL);
     }
 }

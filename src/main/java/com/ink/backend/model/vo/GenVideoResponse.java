@@ -9,10 +9,10 @@ public class GenVideoResponse {
      */
     private String aiMessage;
 
-    /**
-     * 相应的视频的连接
-     */
-    private String aiVoiceUrl;
+//    /**
+//     * 相应的视频的连接
+//     */
+//    private String aiVoiceUrl;
 
     /**
      * 相应的视频的连接
