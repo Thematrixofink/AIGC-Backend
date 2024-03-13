@@ -9,6 +9,8 @@ import com.ink.backend.model.dto.networkRequest.UploadRequest;
 import com.ink.backend.service.GenRequestService;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
+
 @Service
 public class GenRequestServiceImpl implements GenRequestService {
 
@@ -20,9 +22,9 @@ public class GenRequestServiceImpl implements GenRequestService {
         uploadRequest.setWav(wavUrl);
         HttpResponse response = HttpRequest.post(FileConstant.MODEL_URL +"/upload")
                 .body(JSONUtil.toJsonStr(uploadRequest))
+                .timeout(120000)
+                .setConnectionTimeout(120000)
                 .execute();
-        System.out.println("==============================上传文件的响应为===============================");
-        System.out.println(response);
         return response;
     }
 
@@ -33,6 +35,8 @@ public class GenRequestServiceImpl implements GenRequestService {
         remoteGenRequest.setTxt(txt);
         HttpResponse response = HttpRequest.get(FileConstant.MODEL_URL + "/generator/voice")
                 .body(JSONUtil.toJsonStr(remoteGenRequest))
+                .timeout(120000)
+                .setConnectionTimeout(120000)
                 .execute();
         System.out.println("==============================生成音频的响应为===============================");
         System.out.println(response);
@@ -46,6 +50,8 @@ public class GenRequestServiceImpl implements GenRequestService {
         remoteGenRequest.setTxt(txt);
         HttpResponse response = HttpRequest.get(FileConstant.MODEL_URL + "/generator/video")
                 .body(JSONUtil.toJsonStr(remoteGenRequest))
+                .timeout(120000)
+                .setConnectionTimeout(120000)
                 .execute();
         System.out.println("==============================生成视频的响应为===============================");
         System.out.println(response);

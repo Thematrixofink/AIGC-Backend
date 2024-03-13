@@ -9,6 +9,8 @@ spring:
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
+    async:
+      request-timeout: 180000
   # session 配置
   session:
     # 分布式 session
@@ -38,7 +40,7 @@ spring:
 
 #todo 修改ip
 server:
-#  address: 202.146.220.165
+  address: localhost
   port: 8101
   servlet:
     context-path: /api
@@ -48,8 +50,10 @@ server:
         max-age: 2592000
         same-site: none
         secure: true
+      timeout: 180s
   tomcat:
     max-swallow-size: 50MB
+    connection-timeout: 180000
 
 mybatis-plus:
   configuration:
@@ -68,4 +72,10 @@ cos:
     secretKey: CD250jGbmjYSIxdliUAkJfOzVpukZDgw
     region: ap-beijing
     bucket: original-1317028174
+
+
+yuapi:
+  client:
+    access-key: rkpcl4sfilr8q47igdx4qariwaeuvbt4
+    secret-key: pp592sv2dfp42cb599e2ekvbs7yf01cj
 

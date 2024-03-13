@@ -4,10 +4,7 @@ import cn.hutool.http.HttpResponse;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ink.backend.annotation.AuthCheck;
-import com.ink.backend.common.BaseResponse;
-import com.ink.backend.common.DeleteRequest;
-import com.ink.backend.common.ErrorCode;
-import com.ink.backend.common.ResultUtils;
+import com.ink.backend.common.*;
 import com.ink.backend.constant.UserConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.exception.ThrowUtils;
@@ -98,7 +95,7 @@ public class AIPersonInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"文件路径非法");
         }
 
-        //3.创建AIperson先不写入数据库
+        //3.创建AIperson
         Long userId = user.getId();
         AIPersonInfo aiPersonInfo = new AIPersonInfo();
         aiPersonInfo.setUserId(userId);
@@ -106,20 +103,21 @@ public class AIPersonInfoController {
         aiPersonInfo.setAiProfile(aiProfile);
         aiPersonInfo.setAiVoice(aiVoice);
         aiPersonInfo.setAiPicture(aiPicture);
+        aiPersonInfo.setStatus(StatusCode.TO_GEN.getCode());
         long id = IdWorker.getId(aiPersonInfo);
         aiPersonInfo.setId(id);
-
-        //3.异步地把连接发送给视频模型
-        CompletableFuture<HttpResponse> task = CompletableFuture.supplyAsync(() -> {
-            HttpResponse response = genRequestService.upload(id, aiVoice, aiPicture);
-            return response;
-        });
-
-        //4.将aiPersonInfo保存到数据库
+        //3.将aiPersonInfo保存到数据库
         boolean isSaveAiInfo = aIPersonInfoService.save(aiPersonInfo);
         if(!isSaveAiInfo){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR);
         }
+
+        //4.异步地把连接发送给视频模型
+        CompletableFuture<HttpResponse> task = CompletableFuture.supplyAsync(() -> {
+            //todo 修改任务状态为生成中
+            HttpResponse response = genRequestService.upload(id, aiVoice, aiPicture);
+            return response;
+        });
 
         //5. 构件第一轮聊天
         Message message = new Message();
@@ -144,10 +142,12 @@ public class AIPersonInfoController {
         Long messageId = message.getId();
 
         //9.检查是否上传成功
-//        HttpResponse httpResponse = task.join();
-////        if(httpResponse.getStatus() != 200){
-////            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"上传连接到模型失败!");
-////        }
+        HttpResponse httpResponse = task.join();
+        System.out.println("==============================上传文件的响应为===============================");
+        System.out.println(httpResponse.body());
+        if(httpResponse.getStatus() != 200){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"上传连接到模型失败!");
+        }
 
         //10.创建AI数字人成功，对话开启,用户的使用次数减1
         aigcCount--;

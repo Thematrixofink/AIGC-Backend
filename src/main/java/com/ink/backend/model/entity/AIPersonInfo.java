@@ -65,6 +65,11 @@ public class AIPersonInfo implements Serializable {
      */
     private Integer status;
 
+    /**
+     * 执行信息
+     */
+    private String execMessage;
+
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 }

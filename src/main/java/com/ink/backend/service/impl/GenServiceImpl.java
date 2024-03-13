@@ -147,7 +147,7 @@ public class GenServiceImpl implements GenService {
 
         //4.保存Message
         String aiMessage = messageService.aiMsgToJson(result);
-        String temp = messageService.appendMessage(historyOriginMessage,sendMessage);
+        String temp = messageService.appendMessage(historyOriginMessage,jsonUserInput);
         String mes  = messageService.appendMessage(temp,aiMessage);
         message.setContent(mes);
         boolean isSave = messageService.updateById(message);
@@ -156,23 +156,15 @@ public class GenServiceImpl implements GenService {
         }
 
         //5.等待生产完成
-        HttpResponse response = null;
-        try {
-            response = task.get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"获取生成视频失败!");
-        }
-
+        HttpResponse response = task.join();
         if(response.getStatus() != 200){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"生成音频错误");
         }
         JSONObject jsonObject = JSONUtil.parseObj(response.body());
         String videoKey = (String)jsonObject.get("key");
-        String url = cosManager.getObjectUrl(videoKey);
-
         GenVideoResponse genVideoResponse = new GenVideoResponse();
         genVideoResponse.setAiMessage(result);
-        genVideoResponse.setAiVideoUrl(url);
+        genVideoResponse.setAiVideoUrl(videoKey);
         return genVideoResponse;
     }
 

@@ -16,5 +16,5 @@ public interface FileConstant {
     /**
      * 模型端URL
      */
-    String MODEL_URL = "api.hiteva.cn/api";
+    String MODEL_URL = "inkslab.icu:8082/api";
 }
