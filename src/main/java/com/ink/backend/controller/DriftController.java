@@ -1,6 +1,7 @@
 package com.ink.backend.controller;
 
 
+import cn.hutool.core.io.unit.DataUnit;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -9,6 +10,7 @@ import com.ink.backend.common.BaseResponse;
 import com.ink.backend.common.DeleteRequest;
 import com.ink.backend.common.ErrorCode;
 import com.ink.backend.common.ResultUtils;
+import com.ink.backend.constant.LimitBusinessConstant;
 import com.ink.backend.constant.UserConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.exception.ThrowUtils;
@@ -25,19 +27,27 @@ import com.ink.backend.model.vo.BottleVO;
 import com.ink.backend.service.BottleService;
 import com.ink.backend.service.BottlecommentService;
 import com.ink.backend.service.UserService;
+import com.ink.backend.utils.NetUtils;
+import com.ink.backend.utils.TimeUtils;
 import com.qcloud.cos.model.ciModel.auditing.AuditingJobsDetail;
 import com.qcloud.cos.model.ciModel.auditing.TextAuditingResponse;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -55,6 +65,9 @@ public class DriftController {
     private UserService userService;
     @Resource
     private BottlecommentService bottlecommentService;
+
+    @Resource
+    private RedisTemplate<String,Integer> redisTemplate;
     @Resource
     private CosManager cosManager;
 
@@ -69,6 +82,12 @@ public class DriftController {
      */
     @PostMapping("/add")
     public BaseResponse<Long> addBottle(@RequestBody BottleAddRequest bottleAddRequest, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        Long userId = loginUser.getId();
+        //检查用户是否还有扔瓶子的次数
+        boolean havaTimes = checkDailyUseTimes(userId, LimitBusinessConstant.DRIFT_ADD_PREFIX, LimitBusinessConstant.DRIFT_ADD_TIMES);
+        if(!havaTimes) throw new BusinessException(ErrorCode.FORBIDDEN_ERROR,"今天扔了太多了，明天再来吧");
+
         if (bottleAddRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -87,11 +106,14 @@ public class DriftController {
         }
         Bottle bottle = new Bottle();
         bottle.setContent(content);
-        User loginUser = userService.getLoginUser(request);
         bottle.setUserId(loginUser.getId());
         boolean result = bottleService.save(bottle);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         long newPostId = bottle.getId();
+        //用户的使用次数加1
+        Integer preUseTimes = redisTemplate.opsForValue().get(LimitBusinessConstant.DRIFT_ADD_PREFIX + userId);
+        preUseTimes++;
+        redisTemplate.opsForValue().set(LimitBusinessConstant.DRIFT_ADD_PREFIX + userId,preUseTimes);
         return ResultUtils.success(newPostId);
     }
 
@@ -132,7 +154,6 @@ public class DriftController {
      * @return
      */
     @GetMapping("/get/vo")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<BottleVO> getBottleVOById(long id, HttpServletRequest request) {
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -224,11 +245,12 @@ public class DriftController {
      */
     @GetMapping("/pick")
     public BaseResponse<BottleVO> pickBottle(HttpServletRequest request){
-        //todo 检查用户是否还有打捞次数，限制用户打捞的次数
-        BottleQueryRequest bottleQueryRequest = new BottleQueryRequest();
-        //防止捞到自己的
         User loginUser = userService.getLoginUser(request);
         Long pickUserId = loginUser.getId();
+        boolean b = checkDailyUseTimes(pickUserId, LimitBusinessConstant.DRIFT_PICK_PREFIX, LimitBusinessConstant.DRIFT_PICK_TIMES);
+        if(!b) throw new BusinessException(ErrorCode.FORBIDDEN_ERROR,"今天捞了太多了，明天再来吧");
+
+        BottleQueryRequest bottleQueryRequest = new BottleQueryRequest();
         bottleQueryRequest.setNotId(pickUserId);
         bottleQueryRequest.setIsPick(0);
         QueryWrapper<Bottle> queryWrapper = bottleService.getQueryWrapper(bottleQueryRequest);
@@ -247,6 +269,10 @@ public class DriftController {
         bottle.setPickUserId(pickUserId);
         bottle.setIsPick(1);
         bottleService.updateById(bottle);
+        //用户的使用次数加1
+        Integer preUseTimes = redisTemplate.opsForValue().get(LimitBusinessConstant.DRIFT_PICK_PREFIX + userId);
+        preUseTimes++;
+        redisTemplate.opsForValue().set(LimitBusinessConstant.DRIFT_PICK_PREFIX + userId,preUseTimes);
         return ResultUtils.success(bottleVO);
     }
 
@@ -324,6 +350,29 @@ public class DriftController {
         AuditingJobsDetail auditingDetail = cosManager.textAuditing(content);
         String textResult = auditingDetail.getResult();
         if(textResult.equals("1")){
+            return false;
+        }
+        return true;
+    }
+
+
+    /**
+     * 检查是否还有每日使用次数
+     * @param userId
+     * @param businessKey
+     * @param dailyMaxTimes
+     * @return
+     */
+    private boolean checkDailyUseTimes(Long userId,String businessKey,Integer dailyMaxTimes){
+        Integer useTimes = redisTemplate.opsForValue().get(businessKey + userId);
+        //说明今天还没有使用过,为其设置value和Key
+        if(useTimes == null){
+            LocalDateTime currentTime = LocalDateTime.now();
+            Integer remainSecondsOneDay = TimeUtils.getRemainSecondsOneDay(currentTime);
+            redisTemplate.opsForValue().set(businessKey + userId,0,remainSecondsOneDay, TimeUnit.SECONDS);
+            return true;
+        }
+        if(useTimes >= dailyMaxTimes){
             return false;
         }
         return true;

@@ -13,9 +13,8 @@
 //import org.springframework.scheduling.annotation.Scheduled;
 //
 ///**
-// * 增量同步帖子到 es
+// * 每日刷新用户漂流瓶的打捞次数
 // *
-//
 // */
 //// todo 取消注释开启任务
 ////@Component

@@ -37,7 +37,7 @@ public class RedisLimiterManager {
         //参数为，一个请求占用多少个令牌
         boolean b = rateLimiter.tryAcquire(1);
         if(!b){
-            throw new BusinessException(ErrorCode.TOO_MANY_REQUEST);
+            throw new BusinessException(ErrorCode.TOO_MANY_REQUEST,"访问太频繁了，请稍后再访问!");
         }
     }
 }

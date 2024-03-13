@@ -31,7 +31,8 @@ public class RedissonConfig {
         config.useSingleServer()
                 .setDatabase(database)
                 //todo 有密码要取消注释
-                //.setPassword(password)
+                //todo 没密码要注释
+//                .setPassword(password)
                 .setAddress("redis://"+host+":"+port);
         RedissonClient redisson = Redisson.create(config);
         return redisson;

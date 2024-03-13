@@ -1,7 +1,5 @@
 package com.ink.backend.controller;
 
-import cn.hutool.http.HttpRequest;
-import cn.hutool.http.HttpResource;
 import cn.hutool.http.HttpResponse;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -77,6 +75,7 @@ public class AIPersonInfoController {
     public BaseResponse<String> preGenerator(@RequestBody GenAIRequest genAIRequest, HttpServletRequest request) {
         //1.检查用户是否还有使用功能的次数以及进行限流
         User user = userService.getLoginUser(request);
+        redisLimiterManager.doRateLimit("limit:preGenerator:"+String.valueOf(user.getId()),1,1);
         Integer aigcCount = user.getAigcCount();
         if(aigcCount <= 0){
             return ResultUtils.error(ErrorCode.NO_AUTH_ERROR,"您的次数已经用光！");
@@ -85,7 +84,6 @@ public class AIPersonInfoController {
         String aiProfile = genAIRequest.getAiProfile();
         String aiVoice = genAIRequest.getAiVoice();
         String aiPicture = genAIRequest.getAiPicture();
-        redisLimiterManager.doRateLimit("limit:preGenerator:"+String.valueOf(user.getId()),1,1);
 
         //2.对各项属性进行校验
         if(StringUtils.isBlank(aiName) || StringUtils.isBlank(aiProfile) || StringUtils.isBlank(aiVoice)){
@@ -146,10 +144,10 @@ public class AIPersonInfoController {
         Long messageId = message.getId();
 
         //9.检查是否上传成功
-        HttpResponse httpResponse = task.join();
-        if(httpResponse.getStatus() != 200){
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"上传连接到模型失败!");
-        }
+//        HttpResponse httpResponse = task.join();
+////        if(httpResponse.getStatus() != 200){
+////            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"上传连接到模型失败!");
+////        }
 
         //10.创建AI数字人成功，对话开启,用户的使用次数减1
         aigcCount--;

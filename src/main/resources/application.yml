@@ -36,8 +36,9 @@ spring:
       max-file-size: 50MB
       max-request-size: 50MB
 
+#todo 修改ip
 server:
-  address: 172.20.202.100
+#  address: 202.146.220.165
   port: 8101
   servlet:
     context-path: /api
@@ -45,6 +46,8 @@ server:
     session:
       cookie:
         max-age: 2592000
+        same-site: none
+        secure: true
   tomcat:
     max-swallow-size: 50MB
 

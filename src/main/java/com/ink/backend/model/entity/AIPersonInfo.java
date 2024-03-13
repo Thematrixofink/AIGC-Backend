@@ -60,6 +60,11 @@ public class AIPersonInfo implements Serializable {
     @TableLogic
     private Integer isDelete;
 
+    /**
+     * 生成状态
+     */
+    private Integer status;
+
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 }

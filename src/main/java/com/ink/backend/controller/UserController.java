@@ -324,4 +324,10 @@ public class UserController {
         }
         return ResultUtils.success(avatarURL);
     }
+
+    @PostMapping("/aaa")
+        public BaseResponse<String> getUserasdsaAvatar(HttpServletRequest request){
+        System.out.println(request);
+            return ResultUtils.success("111");
+        }
 }
