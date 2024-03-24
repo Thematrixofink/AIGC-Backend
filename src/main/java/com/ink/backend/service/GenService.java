@@ -1,8 +1,8 @@
 package com.ink.backend.service;
 
 import com.ink.backend.model.dto.GenRequest.GenRequest;
-import com.ink.backend.model.vo.GenVideoResponse;
-import com.ink.backend.model.vo.GenVoiceResponse;
+import com.ink.backend.model.dto.GenRequest.GenVideoResponse;
+import com.ink.backend.model.dto.GenRequest.GenVoiceResponse;
 
 import javax.servlet.http.HttpServletRequest;
 

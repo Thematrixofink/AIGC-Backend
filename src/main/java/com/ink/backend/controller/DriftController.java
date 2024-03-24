@@ -113,7 +113,8 @@ public class DriftController {
         //用户的使用次数加1
         Integer preUseTimes = redisTemplate.opsForValue().get(LimitBusinessConstant.DRIFT_ADD_PREFIX + userId);
         preUseTimes++;
-        redisTemplate.opsForValue().set(LimitBusinessConstant.DRIFT_ADD_PREFIX + userId,preUseTimes);
+        Integer expireTime = getExpireTime();
+        redisTemplate.opsForValue().set(LimitBusinessConstant.DRIFT_ADD_PREFIX + userId,preUseTimes,expireTime,TimeUnit.SECONDS);
         return ResultUtils.success(newPostId);
     }
 
@@ -270,9 +271,10 @@ public class DriftController {
         bottle.setIsPick(1);
         bottleService.updateById(bottle);
         //用户的使用次数加1
-        Integer preUseTimes = redisTemplate.opsForValue().get(LimitBusinessConstant.DRIFT_PICK_PREFIX + userId);
+        Integer preUseTimes = redisTemplate.opsForValue().get(LimitBusinessConstant.DRIFT_PICK_PREFIX + pickUserId);
         preUseTimes++;
-        redisTemplate.opsForValue().set(LimitBusinessConstant.DRIFT_PICK_PREFIX + userId,preUseTimes);
+        Integer expireTime = getExpireTime();
+        redisTemplate.opsForValue().set(LimitBusinessConstant.DRIFT_PICK_PREFIX + pickUserId,preUseTimes,expireTime,TimeUnit.SECONDS);
         return ResultUtils.success(bottleVO);
     }
 
@@ -364,18 +366,29 @@ public class DriftController {
      * @return
      */
     private boolean checkDailyUseTimes(Long userId,String businessKey,Integer dailyMaxTimes){
-        Integer useTimes = redisTemplate.opsForValue().get(businessKey + userId);
+        String key = businessKey + userId;
+        Integer useTimes = redisTemplate.opsForValue().get(key);
         //说明今天还没有使用过,为其设置value和Key
         if(useTimes == null){
-            LocalDateTime currentTime = LocalDateTime.now();
-            Integer remainSecondsOneDay = TimeUtils.getRemainSecondsOneDay(currentTime);
-            redisTemplate.opsForValue().set(businessKey + userId,0,remainSecondsOneDay, TimeUnit.SECONDS);
+            Integer expireTime = getExpireTime();
+            redisTemplate.opsForValue().set(key,0,expireTime, TimeUnit.SECONDS);
             return true;
         }
         if(useTimes >= dailyMaxTimes){
+            System.out.println("今天次数已经没有了");
             return false;
         }
         return true;
+    }
+
+    /**
+     * 获取过期时间
+     * @return
+     */
+    private Integer getExpireTime(){
+        LocalDateTime currentTime = LocalDateTime.now();
+        Integer remainSecondsOneDay = TimeUtils.getRemainSecondsOneDay(currentTime);
+        return remainSecondsOneDay;
     }
 
 }

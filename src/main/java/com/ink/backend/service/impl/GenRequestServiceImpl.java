@@ -1,5 +1,6 @@
 package com.ink.backend.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
@@ -17,13 +18,17 @@ public class GenRequestServiceImpl implements GenRequestService {
     @Override
     public HttpResponse upload(Long id, String wavUrl, String imgUrl) {
         UploadRequest uploadRequest = new UploadRequest();
+        if(StrUtil.isBlank(imgUrl) || StrUtil.isEmpty(imgUrl)){
+            uploadRequest.setImg("null");
+        }else{
+            uploadRequest.setImg(imgUrl);
+        }
         uploadRequest.setId(String.valueOf(id));
-        uploadRequest.setImg(imgUrl);
         uploadRequest.setWav(wavUrl);
         HttpResponse response = HttpRequest.post(FileConstant.MODEL_URL +"/upload")
                 .body(JSONUtil.toJsonStr(uploadRequest))
-                .timeout(120000)
-                .setConnectionTimeout(120000)
+                .timeout(600000)
+                .setConnectionTimeout(600000)
                 .execute();
         return response;
     }
@@ -35,8 +40,8 @@ public class GenRequestServiceImpl implements GenRequestService {
         remoteGenRequest.setTxt(txt);
         HttpResponse response = HttpRequest.get(FileConstant.MODEL_URL + "/generator/voice")
                 .body(JSONUtil.toJsonStr(remoteGenRequest))
-                .timeout(120000)
-                .setConnectionTimeout(120000)
+                .timeout(240000)
+                .setConnectionTimeout(240000)
                 .execute();
         System.out.println("==============================生成音频的响应为===============================");
         System.out.println(response);
@@ -50,8 +55,8 @@ public class GenRequestServiceImpl implements GenRequestService {
         remoteGenRequest.setTxt(txt);
         HttpResponse response = HttpRequest.get(FileConstant.MODEL_URL + "/generator/video")
                 .body(JSONUtil.toJsonStr(remoteGenRequest))
-                .timeout(120000)
-                .setConnectionTimeout(120000)
+                .timeout(240000)
+                .setConnectionTimeout(240000)
                 .execute();
         System.out.println("==============================生成视频的响应为===============================");
         System.out.println(response);

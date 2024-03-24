@@ -4,13 +4,13 @@ spring:
     name: aigc
   # 默认 dev 环境
   profiles:
-    active: dev
+    active: prod
   # 支持 swagger3
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
     async:
-      request-timeout: 180000
+      request-timeout: 600000
   # session 配置
   session:
     # 分布式 session
@@ -30,6 +30,12 @@ spring:
     port: 6379
     timeout: 5000
     password:
+  #rabbitMQ配置
+  rabbitmq:
+    host: localhost
+    port: 5672
+    password: guest
+    username: guest
 
   # 文件上传
   servlet:
@@ -40,7 +46,7 @@ spring:
 
 #todo 修改ip
 server:
-  address: localhost
+#  address: 172.20.96.109
   port: 8101
   servlet:
     context-path: /api
@@ -50,10 +56,10 @@ server:
         max-age: 2592000
         same-site: none
         secure: true
-      timeout: 180s
+      timeout: 600s
   tomcat:
     max-swallow-size: 50MB
-    connection-timeout: 180000
+    connection-timeout: 600000
 
 mybatis-plus:
   configuration:
@@ -68,14 +74,11 @@ mybatis-plus:
 # 对象存储
 cos:
   client:
-    accessKey: AKID7EE93yiGg4JSQCan2999qS0OWXVN7ct6
-    secretKey: CD250jGbmjYSIxdliUAkJfOzVpukZDgw
-    region: ap-beijing
-    bucket: original-1317028174
+    accessKey:
+    secretKey:
+    region:
+    bucket:
 
 
-yuapi:
-  client:
-    access-key: rkpcl4sfilr8q47igdx4qariwaeuvbt4
-    secret-key: pp592sv2dfp42cb599e2ekvbs7yf01cj
-
+glm:
+  apiKey:

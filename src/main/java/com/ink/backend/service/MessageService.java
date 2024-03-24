@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import io.swagger.models.auth.In;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 
 /**
 * @author 24957
@@ -60,4 +61,7 @@ public interface MessageService extends IService<Message> {
      * @return
      */
     String aiMsgToJson(String message);
+
+    List<Message> getNowMessage(Long userId);
+
 }

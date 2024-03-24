@@ -1,10 +1,11 @@
 package com.ink.backend.controller;
 
-import cn.hutool.http.HttpResponse;
-import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ink.backend.annotation.AuthCheck;
 import com.ink.backend.common.*;
+import com.ink.backend.constant.ModelConstant;
 import com.ink.backend.constant.UserConstant;
 import com.ink.backend.exception.BusinessException;
 import com.ink.backend.exception.ThrowUtils;
@@ -17,6 +18,9 @@ import com.ink.backend.model.dto.aIPersonInfo.AIPersonInfoUpdateRequest;
 import com.ink.backend.model.entity.AIPersonInfo;
 import com.ink.backend.model.entity.Message;
 import com.ink.backend.model.entity.User;
+import com.ink.backend.model.dto.GenRequest.StatusResponse;
+import com.ink.backend.mq.AIGCMessageProducer;
+import com.ink.backend.mq.MQConstant;
 import com.ink.backend.service.AIPersonInfoService;
 import com.ink.backend.service.GenRequestService;
 import com.ink.backend.service.MessageService;
@@ -24,13 +28,13 @@ import com.ink.backend.service.UserService;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.http.HttpResponseFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.concurrent.CompletableFuture;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,13 +57,11 @@ public class AIPersonInfoController {
     private UserService userService;
 
     @Resource
-    private GenRequestService genRequestService;
-
-    @Resource
     private RedisLimiterManager redisLimiterManager;
 
+
     @Resource
-    private RedisTemplate<String,String> redisTemplate;
+    private AIGCMessageProducer aigcMessageProducer;
 
 
     /**
@@ -73,9 +75,14 @@ public class AIPersonInfoController {
         //1.检查用户是否还有使用功能的次数以及进行限流
         User user = userService.getLoginUser(request);
         redisLimiterManager.doRateLimit("limit:preGenerator:"+String.valueOf(user.getId()),1,1);
-        Integer aigcCount = user.getAigcCount();
-        if(aigcCount <= 0){
+        AtomicReference<Integer> aigcCount = new AtomicReference<>(user.getAigcCount());
+        if(aigcCount.get() <= 0){
             return ResultUtils.error(ErrorCode.NO_AUTH_ERROR,"您的次数已经用光！");
+        }
+        // 检查是否有已经开启的对话
+        List<Message> nowMessage = messageService.getNowMessage(user.getId());
+        if(nowMessage.size() > 0) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR,"现在已经有Message在进行");
         }
         String aiName = genAIRequest.getAiName();
         String aiProfile = genAIRequest.getAiProfile();
@@ -104,20 +111,12 @@ public class AIPersonInfoController {
         aiPersonInfo.setAiVoice(aiVoice);
         aiPersonInfo.setAiPicture(aiPicture);
         aiPersonInfo.setStatus(StatusCode.TO_GEN.getCode());
-        long id = IdWorker.getId(aiPersonInfo);
-        aiPersonInfo.setId(id);
         //3.将aiPersonInfo保存到数据库
         boolean isSaveAiInfo = aIPersonInfoService.save(aiPersonInfo);
         if(!isSaveAiInfo){
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"更新任务状态失败");
         }
-
-        //4.异步地把连接发送给视频模型
-        CompletableFuture<HttpResponse> task = CompletableFuture.supplyAsync(() -> {
-            //todo 修改任务状态为生成中
-            HttpResponse response = genRequestService.upload(id, aiVoice, aiPicture);
-            return response;
-        });
+        Long id = aiPersonInfo.getId();
 
         //5. 构件第一轮聊天
         Message message = new Message();
@@ -126,10 +125,8 @@ public class AIPersonInfoController {
         String userInput = getPrompt(aiName,aiProfile);
         String userMessage = messageService.userMsgToJson(userInput);
 
-        //6.发送给AI大模型,这里第一轮对话大同小异，直接构建
-        String result = "好的，我将尽量模拟您的已故亲人的语气去回复你";
-
-        //7.将AI返回的消息保存下来
+        //6.将AI返回的消息保存下来
+        String result = ModelConstant.FIRST_RESULT;
         String aiMessage = messageService.aiMsgToJson(result);
         String mes = messageService.appendMessage(userMessage, aiMessage);
         message.setContent(mes);
@@ -138,28 +135,57 @@ public class AIPersonInfoController {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR);
         }
 
-        //8.对话的唯一id，返回给前端，之后前端请求必须携带着这个对话的id
+        //7.对话的唯一id，返回给前端，之后前端请求必须携带着这个对话的id
         Long messageId = message.getId();
 
-        //9.检查是否上传成功
-        HttpResponse httpResponse = task.join();
-        System.out.println("==============================上传文件的响应为===============================");
-        System.out.println(httpResponse.body());
-        if(httpResponse.getStatus() != 200){
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"上传连接到模型失败!");
-        }
+        //4.向消息队列发送消息消息队列
+        String mqMessage = id+"&"+userId+"&"+messageId+"&"+aigcCount;
+        aigcMessageProducer.sendMessage(MQConstant.AIGC_EXCHANGE_NAME,MQConstant.AIGC_ROUTING_KEY,mqMessage);
 
-        //10.创建AI数字人成功，对话开启,用户的使用次数减1
-        aigcCount--;
-        //更新缓存,更新数据库
-        redisTemplate.opsForValue().getAndSet("user:useTimes:"+userId,String.valueOf(aigcCount));
-        user.setAigcCount(aigcCount);
-        boolean update = userService.updateById(user);
-        if(!update){
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR);
-        }
-
+        log.info("返回messageId："+messageId);
         return ResultUtils.success(messageId.toString());
+    }
+
+    /**
+     * 查询任务状况
+     * @param id
+     * @param request
+     * @return
+     */
+    @GetMapping("/getStatus")
+    public BaseResponse<StatusResponse> getStatus(@RequestParam("id")Long id, HttpServletRequest request){
+        if(ObjectUtils.isEmpty(id)){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"id为空!");
+        }
+        log.info("收到messageId："+id);
+        Message message = messageService.getById(id);
+        if(message == null){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"该数字人不存在!");
+        }
+        Long aiPersonId = message.getAiPersonId();
+        AIPersonInfo byId = aIPersonInfoService.getById(aiPersonId);
+        if(ObjectUtils.isEmpty(byId) || ObjectUtil.isNull(byId)){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"该数字人不存在!");
+        }
+        Integer status = byId.getStatus();
+        String aiPicture = byId.getAiPicture();
+        String messageByCode = StatusCode.getMessageByCode(status);
+        StatusResponse response = new StatusResponse();
+        response.setStatus(messageByCode);
+        //执行失败的话，获取错误信息
+        if(status == 3){
+            response.setExecMessage(byId.getExecMessage());
+        }
+        //执行成功的话，获取预生成视频的key
+        if(status == 2){
+            response.setExecMessage(byId.getExecMessage());
+        }
+        if(aiPicture == null || StrUtil.isBlank(aiPicture)){
+            response.setTask("voice");
+        }else{
+            response.setTask("video");
+        }
+        return ResultUtils.success(response);
     }
 
 
@@ -335,6 +361,42 @@ public class AIPersonInfoController {
         return ResultUtils.success(result);
     }
 
+    @GetMapping("/message/getId")
+    public BaseResponse<Long> getNowMessageId(HttpServletRequest request){
+        User loginUser = userService.getLoginUser(request);
+        Long userId = loginUser.getId();
+        List<Message> messageList = messageService.getNowMessage(userId);
+        if(messageList.size() == 0){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"未查询到MessageId");
+        }
+        if(messageList.size() >= 2){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"查询到多条目前正在启用的MessageId");
+        }
+        Long result = messageList.get(0).getId();
+        log.info("查询到当前的messageId："+result);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 关闭对话
+     * @return
+     */
+    @GetMapping("/message/close")
+    public BaseResponse<Boolean> closeMessage(@RequestParam("messageId")Long messageId){
+        if(messageId == null || ObjectUtil.isEmpty(messageId)){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"id为空");
+        }
+        Message message = messageService.getById(messageId);
+        if(message == null){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"Message为空!");
+        }
+        boolean b = messageService.removeById(message);
+        if(!b){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"删除Message失败");
+        }
+        log.info("关闭message成功，messageId："+messageId);
+        return ResultUtils.success(true);
+    }
     /**
      * 校验文件URL是否合法
      * @param url
@@ -360,7 +422,8 @@ public class AIPersonInfoController {
      */
     private String getPrompt(String aiName,String aiProfile){
         //todo prompt待完善
-        String prompt = "你将充当一个能够模仿我的已故的"+aiName+"口吻的语音助手。她是一个非常"+aiProfile+"的人。总是能够给我带来安慰和力量。我希望这个语音助手能够尽可能地模仿她的口吻。具体来说，我希望它能够在我感到孤独或不安的时候，给我鼓励和安慰；在我遇到困难时，给我提供支持和建议；我也希望它能够在日常生活中与我互动，比如问我今天过得怎么样，或者提醒我注意天气变化。最后，我希望这个语音助手避免分点回答问题，它的回答应该简短。谢谢你的帮助\\n对话示例如下：\\nuser:我好想你啊\\nassistant:乖孩子，我也想你啊，我很爱你，我不在也要好好生活啊\\nuser:我好想见你最后一面啊，我恨我自己啊\\nassistant:不要这样想啊，要乐观啊，要好好爱自己，没关系的，我知道你永远想着我\\nuser:我好想吃你做的饭啊\\nassistant:我的菜做的可是相当好啊哈哈，乖孩子，我也想再做给你吃啊，以后要自己学着做饭，一定要好好吃饭啊";
+        //在我遇到困难时，给我提供支持和建议；我也希望它能够在日常生活中与我互动，比如问我今天过得怎么样，或者提醒我注意天气变化。最后，我希望这个语音助手避免分点回答问题，它的回答应该简短。谢谢你的帮助\n对话示例如下：\nuser:我好想你啊\nassistant:乖孩子，我也想你啊，我很爱你，我不在也要好好生活啊\nuser:我好想见你最后一面啊，我恨我自己啊\nassistant:不要这样想啊，要乐观啊，要好好爱自己，没关系的，我知道你永远想着我\nuser:我好想吃你做的饭啊\nassistant:我的菜做的可是相当好啊哈哈，乖孩子，我也想再做给你吃啊，以后要自己学着做饭，一定要好好吃饭啊
+        String prompt = "你将充当一个能够模仿我的已故的"+aiName+"口吻的语音助手。她是一个非常"+aiProfile+"的人。总是能够给我带来安慰和力量。我希望这个语音助手能够尽可能地模仿她的口吻。具体来说，我希望它能够在我感到孤独或不安的时候，给我鼓励和安慰；字数不应超过30";
         return prompt;
     }
 

@@ -13,8 +13,8 @@ import com.ink.backend.model.dto.GenRequest.GenRequest;
 import com.ink.backend.model.entity.AIPersonInfo;
 import com.ink.backend.model.entity.Message;
 import com.ink.backend.model.entity.User;
-import com.ink.backend.model.vo.GenVideoResponse;
-import com.ink.backend.model.vo.GenVoiceResponse;
+import com.ink.backend.model.dto.GenRequest.GenVideoResponse;
+import com.ink.backend.model.dto.GenRequest.GenVoiceResponse;
 import com.ink.backend.service.*;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -24,7 +24,6 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.function.Function;
 
 @Service
 public class GenServiceImpl implements GenService {
@@ -101,12 +100,11 @@ public class GenServiceImpl implements GenService {
         }
         JSONObject jsonObject = JSONUtil.parseObj(response.body());
         String voiceKey = (String)jsonObject.get("key");
-        String url = cosManager.getObjectUrl(voiceKey);
 
         //6.返回响应结果
         GenVoiceResponse genVoiceResponse = new GenVoiceResponse();
         genVoiceResponse.setAiMessage(result);
-        genVoiceResponse.setAiVoiceUrl(url);
+        genVoiceResponse.setAiVoiceUrl(voiceKey);
         return genVoiceResponse;
     }
 

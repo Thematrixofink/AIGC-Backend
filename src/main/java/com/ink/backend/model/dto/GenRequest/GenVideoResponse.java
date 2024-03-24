@@ -1,4 +1,4 @@
-package com.ink.backend.model.vo;
+package com.ink.backend.model.dto.GenRequest;
 
 import lombok.Data;
 

@@ -1,10 +1,6 @@
 package com.ink.backend.service;
 
 import cn.hutool.http.HttpResponse;
-import com.ink.backend.model.dto.GenRequest.GenRequest;
-import com.ink.backend.model.vo.GenVoiceResponse;
-
-import javax.servlet.http.HttpServletRequest;
 
 /**
  * 向模型服务端发送请求Service

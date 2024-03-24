@@ -11,6 +11,7 @@ import com.ink.backend.model.entity.User;
 import com.ink.backend.model.enums.FileUploadBizEnum;
 import com.ink.backend.service.UserService;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import javax.annotation.Resource;
@@ -58,7 +59,6 @@ public class FileController {
     @PostMapping("/upload")
     public BaseResponse<String> uploadFile(@RequestPart("file") MultipartFile multipartFile,
             UploadFileRequest uploadFileRequest, HttpServletRequest request) {
-        System.out.println(multipartFile);
         System.out.println(uploadFileRequest.getBiz());
         String biz = uploadFileRequest.getBiz();
         FileUploadBizEnum fileUploadBizEnum = FileUploadBizEnum.getEnumByValue(biz);
@@ -72,18 +72,29 @@ public class FileController {
         String tempPath = String.format("/%s/%s/%s", fileUploadBizEnum.getValue(), loginUser.getId(), filename);
         File file = null;
         //对文件进行校验，以及格式转换
-        String filepath = validFile(multipartFile, fileUploadBizEnum,tempPath);
+        List<String> result = validFile(multipartFile, fileUploadBizEnum,tempPath);
+        String filepath;
+        String returnResult;
+        if(result.size() == 1){
+            filepath = result.get(0);
+            returnResult = result.get(0);
+        }else{
+            filepath = result.get(0);
+            returnResult = result.get(1);
+        }
         try {
             // 上传文件
             file = File.createTempFile(filepath, null);
             multipartFile.transferTo(file);
+            log.info("上传文件路径为:"+filepath);
             cosManager.putObject(filepath, file);
             boolean isValid = validContent(filepath);
             if(!isValid){
                 throw new BusinessException(ErrorCode.PARAMS_ERROR,"图片涉及敏感信息!");
             }
             // 返回可访问地址
-            return ResultUtils.success(filepath);
+            log.info("返回文件路径为:"+returnResult);
+            return ResultUtils.success(returnResult);
         } catch (Exception e) {
             log.error("file upload error, filepath = " + filepath, e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "上传失败");
@@ -128,11 +139,13 @@ public class FileController {
      * @param multipartFile
      * @param fileUploadBizEnum 业务类型
      */
-    private String validFile(MultipartFile multipartFile, FileUploadBizEnum fileUploadBizEnum,String filePath) {
+    private List<String> validFile(MultipartFile multipartFile, FileUploadBizEnum fileUploadBizEnum,String filePath) {
+        List<String> result = new ArrayList<>();
         // 文件大小
         long fileSize = multipartFile.getSize();
         // 文件后缀
         String fileSuffix = FileUtil.getSuffix(multipartFile.getOriginalFilename());
+        log.info("文件的后缀为:"+fileSuffix);
         //1024 * 1024L 是 1M
         final long ONE_M =1024 * 1024L;
 
@@ -161,17 +174,22 @@ public class FileController {
             }
             //如果是音频文件
             if (AUDIO_SUFFIX.contains(fileSuffix)) {
-
+                log.info("为音频文件");
             }
             //如果是视频文件，那么返回路径为音频文件的路径
             //这里使用了腾讯云COS的自动人声提取
             else if (VIDEO_SUFFIX.contains(fileSuffix)) {
-                return filePath.substring(0, filePath.length() - 4) + "_vocal.flac";
+                log.info("为视频文件");
+                String newPath =filePath.substring(0, filePath.length() - 4) + "_vocal.flac";
+                result.add(filePath);
+                result.add(newPath);
+                return result;
             }
             else{
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件类型错误");
             }
         }
-        return filePath;
+        result.add(filePath);
+        return result;
     }
 }
